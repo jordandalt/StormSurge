@@ -4,11 +4,30 @@ from datetime import date, timedelta
 
 # open storm surge file, pulling list of surge dates
 # this file should either be specified via command line prompts or fetched from a remote service
-surgehandle = open('data/2015_11_17_Surges_and_dates_JD.csv', 'r')
+surgedatefile = input("Please specify relative path to surge date file (or just hit Return to use the default)... ")
+try:
+	surgehandle = open(surgedatefile, 'r')
+except FileNotFoundError:
+	surgehandle = open('data/2015_11_17_Surges_and_dates_JD.csv', 'r')
 cleansurgehandle = open('data/surges_dates_clean.csv', 'w')
 surgefile = csv.reader(surgehandle)
 cleansurgefile = csv.writer(cleansurgehandle)
 surgedates = {} #id:array(start,end) pairs
+
+# open second surge file, pull stations of interest
+# this file should either be specified via command line prompts or fetched from a remote service
+stationsurgefile = input("Please specify relative path to surge station file (or just hit Return to use the default)... ")
+try:
+	stationhandle = open(stationsurgefile, 'r')
+except FileNotFoundError:
+	stationhandle = open('data/2015_11_17_Surges_and_precip_stations_JD.csv', 'r')
+
+stationfile = csv.reader(stationhandle)
+surgestations = {} #id:array(station ids) pairs
+
+outputhandle = open('data/extracted_data.csv', 'w')
+outputfile = csv.writer(outputhandle)
+
 
 next(surgefile) #skip first line
 for row in surgefile:
@@ -67,12 +86,6 @@ for row in surgefile:
 	#write to clean CSV file
 	cleansurgefile.writerow([row[0],row[1],row[2],startsurge.strftime("%Y-%m-%d"),endsurge.strftime("%Y-%m-%d")])
 
-# open second surge file, pull stations of interest
-# this file should either be specified via command line prompts or fetched from a remote service
-stationhandle = open('data/2015_11_17_Surges_and_precip_stations_JD.csv', 'r')
-stationfile = csv.reader(stationhandle)
-surgestations = {} #id:array(station ids) pairs
-
 next(stationfile) #skip first line
 for row in stationfile:
 	#if surge id exists in the dictionary, append the ID
@@ -82,15 +95,12 @@ for row in stationfile:
 		surgestations[row[0]] = [row[3]]
 
 #iterate through surge events, open station files and then look for precip measurements from surge dates
-outputhandle = open('data/extracted_data.csv', 'w')
-outputfile = csv.writer(outputhandle)
-
 for surge in surgestations:
-	# print("looking at surge id: ",surge)
-	# print("looking for dates: ",surgedates[surge][0].strftime("%Y %m %d"),"-",surgedates[surge][1].strftime("%Y %m %d"))
+	print("looking at surge id: ",surge)
+	print("looking for dates: ",surgedates[surge][0].strftime("%Y %m %d"),"-",surgedates[surge][1].strftime("%Y %m %d"))
 	#iterate through station ids
 	for station in surgestations[surge]:
-		# print("looking at station id: ",station)
+		print("looking at station id: ",station)
 		stationhandle = open('data/'+station+".dly","r")
 
 		#row heading we're searching for (this won't work if the surge event spans more than two months)
@@ -125,6 +135,6 @@ for surge in surgestations:
 						if daypointer >= surgedates[surge][0] and daypointer <= surgedates[surge][1]:
 							precipdays[daypointer] = line[i:i+5]
 							print(surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer])
-							outputfile.writerow([surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer]])
+							outputfile.writerow([ surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer]])
 						daypointer = daypointer + timedelta(days=1)
 						daycounter = daycounter - 1
