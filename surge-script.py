@@ -1,8 +1,9 @@
-import os, csv, re
+import os, csv, re, calendar, operator
 import dateutil.parser as parser
 from datetime import date, timedelta
 
 # open storm surge file, pulling list of surge dates
+# this file should either be specified via command line prompts or fetched from a remote service
 surgehandle = open('data/2015_11_17_Surges_and_dates_JD.csv', 'r')
 cleansurgehandle = open('data/surges_dates_clean.csv', 'w')
 surgefile = csv.reader(surgehandle)
@@ -67,6 +68,7 @@ for row in surgefile:
 	cleansurgefile.writerow([row[0],row[1],row[2],startsurge.strftime("%Y-%m-%d"),endsurge.strftime("%Y-%m-%d")])
 
 # open second surge file, pull stations of interest
+# this file should either be specified via command line prompts or fetched from a remote service
 stationhandle = open('data/2015_11_17_Surges_and_precip_stations_JD.csv', 'r')
 stationfile = csv.reader(stationhandle)
 surgestations = {} #id:array(station ids) pairs
@@ -80,32 +82,49 @@ for row in stationfile:
 		surgestations[row[0]] = [row[3]]
 
 #iterate through surge events, open station files and then look for precip measurements from surge dates
+outputhandle = open('data/extracted_data.csv', 'w')
+outputfile = csv.writer(outputhandle)
+
 for surge in surgestations:
-	print("looking at surge id: ",surge)
-	print("looking for dates: ",surgedates[surge][0].strftime("%Y %m %d"),"-",surgedates[surge][1].strftime("%Y %m %d"))
+	# print("looking at surge id: ",surge)
+	# print("looking for dates: ",surgedates[surge][0].strftime("%Y %m %d"),"-",surgedates[surge][1].strftime("%Y %m %d"))
 	#iterate through station ids
 	for station in surgestations[surge]:
-		print("looking at station id: ",station)
-		stationhandle = open(station+".dly","r")
+		# print("looking at station id: ",station)
+		stationhandle = open('data/'+station+".dly","r")
 
-		#row heading we're searching for (this gets complicated if the surge event spans multiple months)
+		#row heading we're searching for (this won't work if the surge event spans more than two months)
 		rowheading_start = station+surgedates[surge][0].strftime("%Y%m")+"PRCP"
 		rowheading_end = station+surgedates[surge][1].strftime("%Y%m")+"PRCP"
 
-		#duration of surge event
-		surgelength = surgedates[surge][1] - surgedates[surge][0]
-		surgelength = surgelength + timedelta(days=1)
-		print(surgelength.days)
-
-		precipdays = []
+		#construct a date:precip dictionary with only valid dates for all months (up to two) covered by surge
+		daypointer_start = parser.parse(surgedates[surge][0].strftime("%m 1 %Y"))
+		daypointer_end = parser.parse(surgedates[surge][1].strftime("%m 1 %Y"))
+		precipdays = {}
 
 		for line in stationhandle:
-			if rowheading_start in line or rowheading_end in line:
+			if rowheading_start in line:
+				daycounter = calendar.monthrange(daypointer_start.year, daypointer_start.month)[1]
+				daypointer = daypointer_start
 				line = line[21:].strip('\n')
 				for i in range(0, len(line), 8):
-					precipdays.append(line[i:i+5])
-		# how do I iterate through precip measurements (combined across months) to just capture the correct dates?
-		for i in range(surgedates[surge][0].day, )
-
-
-# grab precip values associated with date(s)
+					while daycounter > 0:
+						if daypointer >= surgedates[surge][0] and daypointer <= surgedates[surge][1]: 
+							#iterate through whole month, but only add dates to dictionary that are within range
+							precipdays[daypointer] = line[i:i+5]
+							print(surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer])
+							outputfile.writerow([surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer]])
+						daypointer = daypointer + timedelta(days=1)
+						daycounter = daycounter - 1
+			elif rowheading_start != rowheading_end and rowheading_end in line:
+				daycounter = calendar.monthrange(daypointer_end.year, daypointer_end.month)[1]
+				daypointer = daypointer_end
+				line = line[21:].strip('\n')
+				for i in range(0, len(line), 8):
+					while daycounter > 0:
+						if daypointer >= surgedates[surge][0] and daypointer <= surgedates[surge][1]:
+							precipdays[daypointer] = line[i:i+5]
+							print(surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer])
+							outputfile.writerow([surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer]])
+						daypointer = daypointer + timedelta(days=1)
+						daycounter = daycounter - 1
