@@ -138,3 +138,9 @@ for surge in surgestations:
 							outputfile.writerow([ surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer]])
 						daypointer = daypointer + timedelta(days=1)
 						daycounter = daycounter - 1
+		if len(precipdays) == 0: #write -9998 for dates missing from station file
+			daypointer = surgedates[surge][0]
+			while daypointer <= surgedates[surge][1]:
+				outputfile.writerow([surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, '-9998'])
+				daypointer = daypointer + timedelta(days=1)
+
