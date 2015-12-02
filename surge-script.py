@@ -8,7 +8,7 @@ surgedatefile = input("Please specify relative path to surge date file (or just 
 try:
 	surgehandle = open(surgedatefile, 'r')
 except FileNotFoundError:
-	surgehandle = open('data/2015_11_17_Surges_and_dates_JD.csv', 'r')
+	surgehandle = open('2015_11_17_Surges_and_dates_JD.csv', 'r')
 cleansurgehandle = open('output/surges_dates_clean.csv', newline='', 'w')
 surgefile = csv.reader(surgehandle)
 cleansurgefile = csv.writer(cleansurgehandle)
@@ -20,12 +20,12 @@ stationsurgefile = input("Please specify relative path to surge station file (or
 try:
 	stationhandle = open(stationsurgefile, 'r')
 except FileNotFoundError:
-	stationhandle = open('output/2015_11_17_Surges_and_precip_stations_JD.csv', 'r')
+	stationhandle = open('2015_11_17_Surges_and_precip_stations_JD.csv', 'r')
 
 stationfile = csv.reader(stationhandle)
 surgestations = {} #id:array(station ids) pairs
 
-outputhandle = open('data/extracted_data.csv', newline='', 'w')
+outputhandle = open('output/extracted_data.csv', newline='', 'w')
 outputfile = csv.writer(outputhandle)
 
 
