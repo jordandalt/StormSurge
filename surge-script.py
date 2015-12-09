@@ -1,6 +1,7 @@
 import os, csv, re, calendar, operator
 import dateutil.parser as parser
 from datetime import date, timedelta
+from ftplib import FTP
 
 # open storm surge file, pulling list of surge dates
 # this file should either be specified via command line prompts or fetched from a remote service
@@ -8,8 +9,8 @@ surgedatefile = input("Please specify relative path to surge date file (or just 
 try:
 	surgehandle = open(surgedatefile, 'r')
 except FileNotFoundError:
-	surgehandle = open('2015_11_17_Surges_and_dates_JD.csv', 'r')
-cleansurgehandle = open('output/surges_dates_clean.csv', newline='', 'w')
+	surgehandle = open('2015_12_02_Dates.csv', 'r')
+cleansurgehandle = open('output/surges_dates_clean.csv', 'w', newline='')
 surgefile = csv.reader(surgehandle)
 cleansurgefile = csv.writer(cleansurgehandle)
 surgedates = {} #id:array(start,end) pairs
@@ -20,12 +21,12 @@ stationsurgefile = input("Please specify relative path to surge station file (or
 try:
 	stationhandle = open(stationsurgefile, 'r')
 except FileNotFoundError:
-	stationhandle = open('2015_11_17_Surges_and_precip_stations_JD.csv', 'r')
+	stationhandle = open('2015_12_02_All_Stations.csv', 'r')
 
 stationfile = csv.reader(stationhandle)
 surgestations = {} #id:array(station ids) pairs
 
-outputhandle = open('output/extracted_data.csv', newline='', 'w')
+outputhandle = open('output/extracted_data.csv', 'w', newline='')
 outputfile = csv.writer(outputhandle)
 
 
@@ -94,14 +95,31 @@ for row in stationfile:
 	else:
 		surgestations[row[0]] = [row[3]]
 
+ftp = FTP("ftp.ncdc.noaa.gov")
+try:
+	ftp.login()
+	ftp.cwd('pub/data/ghcn/daily/all')
+except Exception as e:
+	print("Unable to access NOAA servers due to error:", e)
+
 #iterate through surge events, open station files and then look for precip measurements from surge dates
 for surge in surgestations:
 	print("looking at surge id: ",surge)
 	print("looking for dates: ",surgedates[surge][0].strftime("%Y %m %d"),"-",surgedates[surge][1].strftime("%Y %m %d"))
 	#iterate through station ids
 	for station in surgestations[surge]:
+		missingfileflag = 0
 		print("looking at station id: ",station)
-		stationhandle = open('data/'+station+".dly","r")
+		try:
+			stationhandle = open('data/'+station+".dly","r")
+		except FileNotFoundError:
+			print("Station", station, "file missing! Attempting to download from NOAA...")
+			try:
+				newdly = open('data/'+station+".dly", 'wb')
+				dlyname = station+".dly"
+				ftp.retrbinary('RETR %s' % dlyname, newdly.write)
+			except Exception as e:
+				print("Unable to write new .dly file due to error:", e)
 
 		#row heading we're searching for (this won't work if the surge event spans more than two months)
 		rowheading_start = station+surgedates[surge][0].strftime("%Y%m")+"PRCP"
@@ -112,35 +130,38 @@ for surge in surgestations:
 		daypointer_end = parser.parse(surgedates[surge][1].strftime("%m 1 %Y"))
 		precipdays = {}
 
+		if(stationhandle):
+			missingfileflag = 1
+
 		for line in stationhandle:
 			if rowheading_start in line:
 				daycounter = calendar.monthrange(daypointer_start.year, daypointer_start.month)[1]
 				daypointer = daypointer_start
 				line = line[21:].strip('\n')
 				for i in range(0, len(line), 8):
-					while daycounter > 0:
-						if daypointer >= surgedates[surge][0] and daypointer <= surgedates[surge][1]: 
-							#iterate through whole month, but only add dates to dictionary that are within range
-							precipdays[daypointer] = line[i:i+5]
-							print(surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer])
-							outputfile.writerow([surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer]])
-						daypointer = daypointer + timedelta(days=1)
-						daycounter = daycounter - 1
+					if daypointer >= surgedates[surge][0] and daypointer <= surgedates[surge][1] and daycounter > 0:
+						#iterate through whole month, but only add dates to dictionary that are within range
+						precipdays[daypointer] = line[i:i+5]
+						print(surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer])
+						outputfile.writerow([surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer]])
+					daypointer = daypointer + timedelta(days=1)
+					daycounter = daycounter - 1
 			elif rowheading_start != rowheading_end and rowheading_end in line:
 				daycounter = calendar.monthrange(daypointer_end.year, daypointer_end.month)[1]
 				daypointer = daypointer_end
 				line = line[21:].strip('\n')
 				for i in range(0, len(line), 8):
-					while daycounter > 0:
-						if daypointer >= surgedates[surge][0] and daypointer <= surgedates[surge][1]:
-							precipdays[daypointer] = line[i:i+5]
-							print(surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer])
-							outputfile.writerow([ surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer]])
-						daypointer = daypointer + timedelta(days=1)
-						daycounter = daycounter - 1
-		if len(precipdays) == 0: #write -9998 for dates missing from station file
+					if daypointer >= surgedates[surge][0] and daypointer <= surgedates[surge][1] and daycounter > 0:
+						precipdays[daypointer] = line[i:i+5]
+						print(surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer])
+						outputfile.writerow([ surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer]])
+					daypointer = daypointer + timedelta(days=1)
+					daycounter = daycounter - 1
+		if len(precipdays) == 0 and missingfileflag: #write -9998 for dates missing from station file
+			print("dates not found for surge", surge, "in station",station)
 			daypointer = surgedates[surge][0]
 			while daypointer <= surgedates[surge][1]:
 				outputfile.writerow([surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, '-9998'])
 				daypointer = daypointer + timedelta(days=1)
+
 
