@@ -12,8 +12,10 @@ def surgeQC (beginyear=-1, endyear=-1):
 		endyear = input("Please specify end year for data set, or just hit enter for default (2012)... ")
 		if not endyear:
 			endyear = 2012
-	# how many months of data?
-	targetmonths = (endyear - beginyear) * 12
+
+	totaldays = 0
+	for year in range(beginyear, endyear+1, 1):
+		totaldays = totaldays + 366 if calendar.isleap(year) else totaldays + 365
 
 	# take list of stations from surge-station CSV file
 	stationsurgefile = input("Please specify relative path to surge station file (or just hit Return to use the default)... ")
@@ -31,12 +33,12 @@ def surgeQC (beginyear=-1, endyear=-1):
 		if row[3] not in stations:
 			stations.add(row[3])
 
-	print ("Station ID\tMonths\ttMissing\tPercent Complete")
-	monthcounts = []
+	daycounts = []
 	completepercents = []
-	#open each station file and count the number of precip months
+	print ("Station ID\tTotal Days\tCompleteness")
+	#open each station file and count the number of precip days within year range
 	for station in stations:
-		monthcount = 0
+		stationdaycount = 0
 		try:
 			stationhandle = open('data/'+station+".dly","r")
 
@@ -44,18 +46,20 @@ def surgeQC (beginyear=-1, endyear=-1):
 			print("Station", station, "file missing!")
 
 		for line in stationhandle:
-			if station in line and "PRCP" in line:
-				monthcount = monthcount + 1
-		# if monthcount > targetmonths:
-		monthcounts.append(monthcount)
-		completepercents.append(monthcount/targetmonths*100)
-		missingmonths = targetmonths - monthcount
-		print (station,"\t",monthcount,"\t",missingmonths,"\t",monthcount/targetmonths*100,"%")
+			if station in line and "PRCP" in line and int(line[11:15]) >= beginyear and int(line[11:15]) <= endyear:
+				line = line[21:].strip('\n')
+				for i in range(0, len(line), 8):
+					if line[i:i+5] != '-9999':
+						stationdaycount = stationdaycount + 1
+		daycounts.append(stationdaycount)
+		completepercents.append(stationdaycount/totaldays*100)
+		print (station,"\t",stationdaycount,"\t",stationdaycount/totaldays*100,"%")
 
 	# output months of data, total of missing months, percent of missing months for each station file
 	print ("Out of",len(stations),"station files:")
-	print ("Mean months of data:",numpy.mean(monthcounts))
+	print ("Mean days of data:",numpy.mean(daycounts))
 	print ("Mean data completeness:",numpy.mean(completepercents),"%")
+
 #defining "heavy" rainfall threshold.
 # 90% threshold within each station
 # OR 90% threshold within average of all stations associated with surge ID
