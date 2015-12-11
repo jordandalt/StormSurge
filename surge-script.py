@@ -103,15 +103,22 @@ except Exception as e:
 	print("Unable to access NOAA servers due to error:", e)
 
 #iterate through surge events, open station files and then look for precip measurements from surge dates
+totaldatecount = 0
+missingdatecount = 0
+nodatasurges = 0
 for surge in surgestations:
 	print("looking at surge id: ",surge)
 	print("looking for dates: ",surgedates[surge][0].strftime("%Y %m %d"),"-",surgedates[surge][1].strftime("%Y %m %d"))
+
+	surgeemptystations = 0
+	surgetotalstations = len(surgestations[surge])
 	#iterate through station ids
 	for station in surgestations[surge]:
 		missingfileflag = 0
 		print("looking at station id: ",station)
 		try:
 			stationhandle = open('data/'+station+".dly","r")
+			totaldatecount = totaldatecount + 1
 		except FileNotFoundError:
 			print("Station", station, "file missing! Attempting to download from NOAA...")
 			try:
@@ -160,8 +167,14 @@ for surge in surgestations:
 		if len(precipdays) == 0 and missingfileflag: #write -9998 for dates missing from station file
 			print("dates not found for surge", surge, "in station",station)
 			daypointer = surgedates[surge][0]
+			missingdatecount = missingdatecount + 1
+			surgeemptystations = surgeemptystations + 1
 			while daypointer <= surgedates[surge][1]:
 				outputfile.writerow([surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, '-9998'])
 				daypointer = daypointer + timedelta(days=1)
 
-
+	# print("Surge ID",surge,"is missing data for",surgeemptystations,"out of",surgetotalstations,"stations!")
+	if surgeemptystations == surgetotalstations:
+		nodatasurges = nodatasurges + 1
+print ("Number of missing dates:", missingdatecount, "out of", totaldatecount, "total surgedates")
+print (nodatasurges,"surges have NO station data")
