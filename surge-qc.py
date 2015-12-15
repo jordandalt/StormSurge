@@ -27,6 +27,9 @@ def surgeQC (beginyear=-1, endyear=-1):
 	stationfile = csv.reader(stationhandle)
 	stations = set()
 
+	outputhandle = open('output/station_completeness_data.csv', 'w', newline='')
+	outputfile = csv.writer(outputhandle)
+
 	next(stationfile) #skip first line
 	for row in stationfile:
 		#building set of all station IDs
@@ -36,6 +39,7 @@ def surgeQC (beginyear=-1, endyear=-1):
 	daycounts = []
 	completepercents = []
 	print ("Station ID\tTotal Days\tCompleteness")
+	outputfile.writerow(["Station ID","Total Days","Completeness"])
 	#open each station file and count the number of precip days within year range
 	for station in stations:
 		stationdaycount = 0
@@ -53,12 +57,16 @@ def surgeQC (beginyear=-1, endyear=-1):
 						stationdaycount = stationdaycount + 1
 		daycounts.append(stationdaycount)
 		completepercents.append(stationdaycount/totaldays*100)
+		outputfile.writerow([station,stationdaycount,str(stationdaycount/totaldays*100)+"%"])
 		print (station,"\t",stationdaycount,"\t",stationdaycount/totaldays*100,"%")
 
 	# output months of data, total of missing months, percent of missing months for each station file
 	print ("Out of",len(stations),"station files:")
 	print ("Mean days of data:",numpy.mean(daycounts))
 	print ("Mean data completeness:",numpy.mean(completepercents),"%")
+
+	#prompt for day count (percent?) threshold
+	#return list of stations that are above threshold
 
 #defining "heavy" rainfall threshold.
 # 90% threshold within each station
