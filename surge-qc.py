@@ -1,17 +1,9 @@
 import os, csv, re, calendar, numpy
 
 #QC check -- make sure stations are eligible for averaging by comparing each file's date range with desired date range.
-# spoiler alert: most station files aren't going to be good.
-def surgeQC (beginyear=-1, endyear=-1):
-
-	# input beginning and end years for data
-	if (beginyear == -1 or endeyar == -1):
-		beginyear = input("Please specify beginning year for data set, or just hit enter for default (1950) ")
-		if not beginyear:
-			beginyear = 1950
-		endyear = input("Please specify end year for data set, or just hit enter for default (2012)... ")
-		if not endyear:
-			endyear = 2012
+# iterates through all stations, prints total days within specified range and 90th precip percentile for each station
+# if threshold provided, only outputs percentiles for stations above threshold
+def surgeQC (beginyear, endyear, threshold):
 
 	totaldays = 0
 	for year in range(beginyear, endyear+1, 1):
@@ -38,11 +30,14 @@ def surgeQC (beginyear=-1, endyear=-1):
 
 	daycounts = []
 	completepercents = []
-	print ("Station ID\tTotal Days\tCompleteness")
-	outputfile.writerow(["Station ID","Total Days","Completeness"])
+
+	print ("Station ID\tTotal Days\tCompleteness\t90th Percentile Precip")
+	outputfile.writerow(["Station ID","Total Days","Completeness","90th Percentile Precip"])
 	#open each station file and count the number of precip days within year range
 	for station in stations:
 		stationdaycount = 0
+		precipvalues = []
+		precipval = ''
 		try:
 			stationhandle = open('data/'+station+".dly","r")
 
@@ -54,25 +49,37 @@ def surgeQC (beginyear=-1, endyear=-1):
 				line = line[21:].strip('\n')
 				for i in range(0, len(line), 8):
 					if line[i:i+5] != '-9999':
+						precipvalues.append(float(line[i:i+5]))
 						stationdaycount = stationdaycount + 1
 		daycounts.append(stationdaycount)
 		completepercents.append(stationdaycount/totaldays*100)
-		outputfile.writerow([station,stationdaycount,str(stationdaycount/totaldays*100)+"%"])
-		print (station,"\t",stationdaycount,"\t",stationdaycount/totaldays*100,"%")
+
+		if threshold and (stationdaycount/totaldays*100) >= float(threshold):
+			precipval = numpy.percentile(precipvalues,90)
+		elif not threshold and precipvalues:
+			precipval = numpy.percentile(precipvalues,90)
+		stationdata = [station,stationdaycount,str(stationdaycount/totaldays*100)+"%",str(precipval)]
+		outputfile.writerow(stationdata)
+		print (station,stationdaycount,str(stationdaycount/totaldays*100)+"%",str(precipval))
 
 	# output months of data, total of missing months, percent of missing months for each station file
 	print ("Out of",len(stations),"station files:")
 	print ("Mean days of data:",numpy.mean(daycounts))
 	print ("Mean data completeness:",numpy.mean(completepercents),"%")
 
-	#prompt for day count (percent?) threshold
-	#return list of stations that are above threshold
-
-#defining "heavy" rainfall threshold.
-# 90% threshold within each station
-# OR 90% threshold within average of all stations associated with surge ID
+# TO DO: 90% threshold within average of all stations associated with surge ID
 #	(include n for each day of surge event)
 
 
 if __name__ == "__main__":
-	surgeQC()
+	beginyear = input("Please specify beginning year for data set, or just hit enter for default (1950) ")
+	if not beginyear:
+		beginyear = 1950
+	endyear = input("Please specify end year for data set, or just hit enter for default (2012)... ")
+	if not endyear:
+		endyear = 2012
+	#prompt for day count (percent?) threshold
+	threshold = input("Please specify completeness threshold (just hit enter to return all stations)...")
+	if not threshold:
+		threshold = None
+	surgeQC(beginyear,endyear,threshold)
