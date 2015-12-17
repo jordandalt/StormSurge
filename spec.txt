@@ -1,0 +1,14 @@
+WORKFLOW:
+
+retrieve and clean surge dates (write clean dates to CSV file and also return dictionary) — DONE
+
+retrieve surge stations (return dictionary) — DONE
+
+retrieve completeness values for station files (write to CSV file, return dictionary of station:completeness pairs) — DONE
+
+retrieve 90th percentile precip value for a given set of stations (write to CSV file and return dictionary of values indexed on station IDs)  — DONE
+
+retrieve 90th percentile precip value for a given set of surge events (write to CSV file and return dictionary of values indexed on surge IDs)
+
+retrieve daily precipitation values from a given dictionary of surge-event:station array pairs, optionally filtered by set of thresholded stations (write to CSV file) — DONE
+
