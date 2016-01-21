@@ -3,13 +3,6 @@ import dateutil.parser as parser
 from datetime import date, timedelta
 from ftplib import FTP
 
-
-# open second surge file, pull stations of interest
-# this file should either be specified via command line prompts or fetched from a remote service
-
-outputhandle = open('output/extracted_data.csv', 'w', newline='')
-outputfile = csv.writer(outputhandle)
-
 #takes the file name of a surge-date file, cleans and outputs to a new CSV file.
 # returns a dictionary of start-end dates indexed on surge event IDs
 def cleanDates (surgedatefilename, cleansurgefilename):
@@ -161,7 +154,7 @@ def getCompleteness (stationset, beginyear, endyear):
 
 
 #takes set of stations and calculates 90th percentile precip values
-#   writes results to CSV file and returns directionary of station:precip pairs
+#   writes results to CSV file and returns dictionary of station:percentile pairs
 def getStation90th(stationset):
 	outputhandle = open('output/station_percentile_data.csv', 'w', newline='')
 	outputfile = csv.writer(outputhandle)
@@ -187,19 +180,64 @@ def getStation90th(stationset):
 
 	return station90th
 
-#takes dictionary of surge:station array pairs, calculates average daily precip for all stations
-# def getSurge90th(surgestations, stationset):
+#takes dictionary of surge:station array pairs, calculates 90th percentile precip values for all stations per surge
+#	writes results to CSV file and returns dictionary of surge:percentile pairs
+def getSurge90th(surgestations, stationset):
+
+	outputhandle = open('output/surge_percentile_data.csv', 'w', newline='')
+	outputfile = csv.writer(outputhandle)
+
+	surge90th = {} # surgeid: 90th percentile
+
+	for surge,stations in surgestations.items():
+		surgedateseries = {}	# date: [precips]
+		surgeprecips = [] 		# list of average precips (per day, but can be flat)
+
+		for station in stations:
+			if station in stationset:
+				try:
+					stationhandle = open('data/'+station+".dly","r")
+					for line in stationhandle:
+						if station in line and "PRCP" in line and int(line[11:15]) >= beginyear and int(line[11:15]) <= endyear:
+							datepointer = parser.parse(line[15:17]+" 1 "+line[11:15])
+							line = line[21:].strip('\n')
+							for i in range(0, len(line), 8):
+								if line[i:i+5] != '-9999':
+									if datepointer in surgedateseries:
+										surgedateseries[datepointer].append(float(line[i:i+5]))
+									else:
+										surgedateseries[datepointer] = [float(line[i:i+5])]
+									datepointer = datepointer + timedelta(days=1)
+				except FileNotFoundError:
+					print("Station", station, "file missing!")
+		for date,precips in surgedateseries.items():
+			if precips:
+				surgeprecips.append(numpy.mean(precips))
+		if surgeprecips:
+			surge90th[surge] = numpy.percentile(surgeprecips,90)
+			outputfile.writerow([surge, numpy.percentile(surgeprecips,90)])
+		else:
+			surge90th[surge] = -1
+			outputfile.writerow([surge, -1])
+
+	return surge90th
+
 
 #takes dictionary of surge:station array pairs and set of (thresholded) stations
-#   writes results to CSV file
-def getPrecipVals(surgestations, stationset):
+#   writes results to CSV file,
+def getPrecipVals(surgestations, stationset, station90th):
+	outputhandle = open('output/station_precip_vals.csv', 'w', newline='')
+	outputfile = csv.writer(outputhandle)
+
+	outputfile.writerow(["Surge ID","Date Range","Date","Station ID","Precip","Above 90th?"])
 	#iterate through surge events, open station files and then look for precip measurements from surge dates
 	for surge in surgestations:
-		print("looking at surge id: ",surge)
+		# print("looking at surge id: ",surge)
+
 		#iterate through station ids
 		for station in surgestations[surge]:
 			if station in stationset: #threshold check!
-				print("looking at station id: ",station)
+				# print("looking at station id: ",station)
 				try:
 					stationhandle = open('data/'+station+".dly","r")
 				except FileNotFoundError:
@@ -223,8 +261,12 @@ def getPrecipVals(surgestations, stationset):
 							if daypointer >= surgedates[surge][0] and daypointer <= surgedates[surge][1] and daycounter > 0:
 								#iterate through whole month, but only add dates to dictionary that are within range
 								precipdays[daypointer] = line[i:i+5]
-								print(surge, daypointer.strftime("%Y%m%d"), station, precipdays[daypointer])
-								outputfile.writerow([surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer]])
+								# print(surge, daypointer.strftime("%Y%m%d"), station, precipdays[daypointer])
+								if float(line[i:i+5]) >= station90th[station]:
+									threshflag = 1
+								else:
+									threshflag = 0
+								outputfile.writerow([surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer], threshflag])
 							daypointer = daypointer + timedelta(days=1)
 							daycounter = daycounter - 1
 					elif rowheading_start != rowheading_end and rowheading_end in line:
@@ -234,18 +276,84 @@ def getPrecipVals(surgestations, stationset):
 						for i in range(0, len(line), 8):
 							if daypointer >= surgedates[surge][0] and daypointer <= surgedates[surge][1] and daycounter > 0:
 								precipdays[daypointer] = line[i:i+5]
-								print(surge, daypointer.strftime("%Y%m%d"), station, precipdays[daypointer])
-								outputfile.writerow([ surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer]])
+								# print(surge, daypointer.strftime("%Y%m%d"), station, precipdays[daypointer])
+								if float(line[i:i+5]) >= station90th[station]:
+									threshflag = 1
+								else:
+									threshflag = 0
+								outputfile.writerow([ surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, precipdays[daypointer],threshflag])
 							daypointer = daypointer + timedelta(days=1)
 							daycounter = daycounter - 1
 				if len(precipdays) == 0: #write -9998 for dates missing from station file
-					print("dates not found for surge", surge, "in station",station)
+					# print("dates not found for surge", surge, "in station",station)
 					daypointer = surgedates[surge][0]
 					while daypointer <= surgedates[surge][1]:
-						outputfile.writerow([surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, '-9998'])
+						outputfile.writerow([surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), daypointer.strftime("%Y%m%d"), station, '-9998', '0'])
 						daypointer = daypointer + timedelta(days=1)
 
+#takes dictionary of surge:station array pairs and set of (thresholded) stations
+#   writes average precip values per surge day, additional values to CSV file,
+def getSurgePrecipVals(surgestations, stationset, surge90th):
+	outputhandle = open('output/surge_precip_vals.csv', 'w', newline='')
+	outputfile = csv.writer(outputhandle)
 
+	outputfile.writerow(["Surge ID","Date Range","Date","Avg Precip","Above 90th?"])
+	#iterate through surge events, open station files and then look for precip measurements from surge dates
+	for surge in surgestations:
+		surgedateseries = {}	# date: [precips]
+
+		#iterate through station ids
+		for station in surgestations[surge]:
+			if station in stationset: #threshold check!
+
+				try:
+					stationhandle = open('data/'+station+".dly","r")
+				except FileNotFoundError:
+					print("Station", station, "file missing!")
+
+				#row heading we're searching for (this won't work if the surge event spans more than two months)
+				rowheading_start = station+surgedates[surge][0].strftime("%Y%m")+"PRCP"
+				rowheading_end = station+surgedates[surge][1].strftime("%Y%m")+"PRCP"
+
+				#construct a date:precip dictionary with only valid dates for all months (up to two) covered by surge
+				daypointer_start = parser.parse(surgedates[surge][0].strftime("%m 1 %Y"))
+				daypointer_end = parser.parse(surgedates[surge][1].strftime("%m 1 %Y"))
+
+				for line in stationhandle:
+					if rowheading_start in line:
+						daycounter = calendar.monthrange(daypointer_start.year, daypointer_start.month)[1]
+						daypointer = daypointer_start
+						line = line[21:].strip('\n')
+						for i in range(0, len(line), 8):
+							if daypointer >= surgedates[surge][0] and daypointer <= surgedates[surge][1] and daycounter > 0 and line[i:i+5] != '-9999':
+								#iterate through whole month, but only add dates to dictionary that are within range
+								if daypointer in surgedateseries:
+									surgedateseries[daypointer].append(float(line[i:i+5]))
+								else:
+									surgedateseries[daypointer] = [float(line[i:i+5])]
+							daypointer = daypointer + timedelta(days=1)
+							daycounter = daycounter - 1
+					elif rowheading_start != rowheading_end and rowheading_end in line:
+						daycounter = calendar.monthrange(daypointer_end.year, daypointer_end.month)[1]
+						daypointer = daypointer_end
+						line = line[21:].strip('\n')
+						for i in range(0, len(line), 8):
+							if daypointer >= surgedates[surge][0] and daypointer <= surgedates[surge][1] and daycounter > 0 and line[i:i+5] != '-9999':
+								if daypointer in surgedateseries:
+									surgedateseries[daypointer].append(float(line[i:i+5]))
+								else:
+									surgedateseries[daypointer] = [float(line[i:i+5])]
+							daypointer = daypointer + timedelta(days=1)
+							daycounter = daycounter - 1
+		for date,precips in surgedateseries.items():
+			dayavg = -1
+			if precips:
+				dayavg = numpy.mean(precips)
+			if dayavg >= surge90th[surge]:
+				threshflag = 1
+			else:
+				threshflag = 0
+			outputfile.writerow([surge, surgedates[surge][0].strftime("%Y%m%d")+"-"+surgedates[surge][1].strftime("%Y%m%d"), date.strftime("%Y%m%d"), dayavg, threshflag])
 
 if __name__ == "__main__":
 	surgedatefile = input("Please specify relative path to surge date file (or just hit Return to use the default)... ")
@@ -292,12 +400,13 @@ if __name__ == "__main__":
 			threshstationset.add(station)
 
 	print("Calculating 90th percentile precipitation data for each station...")
-	getStation90th(threshstationset)
+	station90th = getStation90th(threshstationset)
 
-	print("Generating daily precipitation values for surge events...")
-	getPrecipVals(surgestations, threshstationset)
+	print("Calculating 90th percentile preciptation data for all stations associated with each surge event...")
+	surge90th = getSurge90th(surgestations,threshstationset)
 
+	print("Generating daily precipitation values for surge events by station...")
+	getPrecipVals(surgestations, threshstationset, station90th)
 
-
-
-
+	print("Generating average precipitation values for surge events...")
+	getSurgePrecipVals(surgestations, threshstationset, surge90th)
